@@ -1,0 +1,305 @@
+---
+title: "Global Neonatal Deaths"
+author: "Varaidzo Moyo"
+format: 
+  dashboard
+theme: solar
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+# Neonatal Deaths 2021
+
+## Row 1 {height=25%}
+
+The first 28 days of life – the neonatal period – is the most vulnerable time for a child’s survival. Children face the highest risk of dying in their first month of life at an average global rate of 17 deaths per 1,000 live births in 2022, down by 53 per cent from 37 deaths per 1,000 live births in 1990. Globally, 2.3 million children died in the first month of life in 2022 – approximately 6,300 neonatal deaths every day.
+source::<https://data.unicef.org/topic/child-survival/neonatal-mortality/>
+
+## Row 2 {height=60%}
+
+```{r}
+# Loading packages 
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(rlang, tidyverse, knitr,maps, here, reactable,rnaturalearth,ggspatial,mdsr,terra,spData,readr, gt, flextable,dplyr,tidyr,ggplot2,plotly,htmltools,orca)
+
+```
+
+```{r}
+#Loading data
+neonatal_deaths<- read.csv(here("data/Number_of_neonatal_deaths.csv"))
+
+govt_health_spending<-read.csv(here("data/CHE_gross_domestic_product(GDP).csv"))
+```
+
+```{r}
+# Selecting only desired columns for Government Health Spending
+gvt_health_spending_data <- govt_health_spending%>%
+  select(Indicator, Location,SpatialDimValueCode, Period, Value)
+
+#Converting data from long to wide format
+wide_data <- gvt_health_spending_data %>%
+  arrange(Location) %>%
+  pivot_wider(
+    id_cols = Location,
+    names_from = Period,
+    values_from = Value
+  )
+
+# Selecting only desired columns for Neonatal deaths
+neonatal_data <- neonatal_deaths%>%
+  select(Indicator, Location,SpatialDimValueCode, Period, FactValueNumeric)
+
+#Converting data from long to wide format
+wide_data_neonatal <- neonatal_data %>%
+  arrange(Location) %>%
+  pivot_wider(
+    id_cols = Location,
+    names_from = Period,
+    values_from = FactValueNumeric
+  )
+```
+
+```{r}
+#joining data (the Neonatal and Government Expenditure datasets)
+gvt_neonatal_joined<-
+inner_join(neonatal_data, gvt_health_spending_data, by = c("Location", "Period"))
+
+# Renaming columns in gvt_neonatal_joined
+colnames(gvt_neonatal_joined)[colnames(gvt_neonatal_joined) == "FactValueNumeric"] <- "Deaths"
+
+colnames(gvt_neonatal_joined)[colnames(gvt_neonatal_joined) == "Value"] <- "GDP%"
+
+# Filtering data to select 2021
+neonatal_deaths_2021 <- gvt_neonatal_joined[gvt_neonatal_joined$Period == 2021, ]
+```
+
+```{r}
+# Loading world map data
+countries <- rnaturalearth::ne_countries()
+
+# Renaming 'Location' column to 'name_long' in gvt_neonatal_joined
+colnames(neonatal_deaths_2021)[colnames(neonatal_deaths_2021) == "Location"] <- "name_long"
+
+# Renaming 'Value' column to 'Deaths' in neonatal_deaths_2021
+colnames(neonatal_deaths_2021)[colnames(neonatal_deaths_2021) == "Value"] <- "Deaths"
+
+# Merging neonatal deaths data for 2021 with world map data
+merged_data <- merge(countries, neonatal_deaths_2021,by = "name_long", all.x = TRUE)
+
+
+# Creating horopleth map of neonatal deaths
+Deaths_map <- ggplot(data = merged_data, aes(fill = Deaths)) +
+  geom_sf() +  # Plotting the spatial polygons
+  scale_fill_viridis_c(name = "Number of Deaths", labels = scales::comma, na.value = "grey90",
+                       option = "plasma", direction = -1) +  # Color scale with comma-separated labels
+  labs(fill = "Neonatal Deaths") +  # Legend title
+  theme_minimal() +  # Minimal theme
+  theme(
+    panel.background = element_blank(),  # Removing panel background
+    panel.grid.major = element_blank(),   # Removing major grid lines
+    panel.grid.minor = element_blank(),   # Removing minor grid lines
+    plot.title = element_text(size = 20), # Changing title size
+  )
+
+
+# Save the plot as an image file (e.g., PNG or PDF)
+ggsave("C:/Users/Varaidzom/Documents/R training/final_project/Images/global_neonatal_deaths.png", plot = Deaths_map, width = 10, height = 8, dpi = 300)
+
+# Convert ggplot to plotly object
+neonatal_deaths <- ggplotly(Deaths_map)
+
+# Display the interactive plot
+neonatal_deaths
+
+```
+## Row 3{height=15%}
+
+### {width=30%}
+```{r}
+# Check for NA values in Deaths column
+has_na <- sum(is.na(merged_data$Deaths))
+
+if (has_na > 0) {
+  # Remove NA values in Deaths column
+  merged_data <- merged_data[!is.na(merged_data$Deaths), ]
+}
+
+# Calculate highest number of deaths
+max_deaths <- max(merged_data$Deaths)
+country_max_deaths <- merged_data$name_long[which.max(merged_data$Deaths)]
+
+# Printing results
+cat("Country with the highest deaths:", country_max_deaths, "\n")
+cat(max_deaths, "\n\n")
+
+```
+
+### {width=30%}
+```{r}
+# Calculate lowest number of deaths
+min_deaths <- min(merged_data$Deaths)
+country_min_deaths <- merged_data$name_long[which.min(merged_data$Deaths)]
+
+# Printing results
+cat("Country with the lowest deaths:", country_min_deaths, "\n")
+cat(min_deaths, "\n\n")
+```
+
+### {width=30%}
+
+```{r}
+# Calculate average number of deaths
+average_deaths <- mean(merged_data$Deaths)
+
+# Printing results
+cat("Average number of deaths Globally:", average_deaths, "\n")
+```
+
+
+# 10 year Health expenditure
+
+## Row 1 {height=40%}
+General government expenditure on health as a percentage of total government expenditure is the level of general government expenditure on health (GGHE) expressed as a percentage of total government expenditure. It shows the weight of public spending on health within the total value of public sector operations. This indicator includes not just the resources channelled through government budgets, but also the expenditures channelled through government entities for health by parastatals, extrabudgetary entities and, notably, compulsory health insurance.
+
+Health expenditure includes all expenditures for the provision of health services, family planning activities, nutrition activities and emergency aid designated for health, but it excludes the provision of drinking water and sanitation
+
+source::https://www.who.int/data/nutrition/nlis/info/health-expenditure
+
+
+## Row 2 {height=60%}
+
+### {width=50%}
+
+```{r}
+# Listing countries to display
+countries_to_display <- c("Zimbabwe", "Afghanistan", "United States of America", "Haiti", "Turkiye","Japan","South Africa","Switzerland","China")
+
+# Filtering neonatal_deaths_2021 to include only the selected countries and years from 2010 to 2021
+filtered_data <- gvt_neonatal_joined %>%
+  filter(Location %in% countries_to_display,
+         Period >= 2010 & Period <= 2021)
+
+# Creating ggplot object
+Neonatal_Deaths <- ggplot(filtered_data, aes(x = Period, y = Deaths, color = Location, group = Location)) +
+  geom_line() +
+  labs(x = "Year",
+       y = "Number of Neonatal Deaths",
+       title = "10 Year Neonatal Deaths Trend") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12),  # Adjusting title font size
+    axis.title.x = element_text(size = 10),  # Adjusting x-axis label font size
+    axis.title.y = element_text(size = 10),  # Adjusting y-axis label font size
+    axis.text.x = element_text(size = 8),    # Adjusting x-axis tick label font size
+    axis.text.y = element_text(size = 8)     # Adjusting y-axis tick label font size
+  )
+
+# Save the plot as an image file (e.g., PNG or PDF)
+ggsave("C:/Users/Varaidzom/Documents/R training/final_project/Images/neonatal_deaths.png", plot = Neonatal_Deaths, width = 10, height = 8, dpi = 300)
+
+# Converting ggplot to plotly for interactivity
+neonatal_deaths <- ggplotly(Neonatal_Deaths)
+
+# Displaying the interactive plot
+neonatal_deaths
+```
+
+### {width=50%}
+
+```{r}
+# Loading world map data
+countries <- rnaturalearth::ne_countries()
+
+# Renaming 'Location' column to 'name_long' in gvt_neonatal_joined
+colnames(neonatal_deaths_2021)[colnames(neonatal_deaths_2021) == "Location"] <- "name_long"
+
+# Renaming 'Value' column to 'Number_of_deaths' in neonatal_deaths_2021
+colnames(neonatal_deaths_2021)[colnames(neonatal_deaths_2021) == "Value"] <- "Number_of_deaths"
+
+
+# Merging neonatal deaths data for 2021 with world map data
+merged_data <- merge(countries, neonatal_deaths_2021, by = "name_long", all.x = TRUE)
+
+# Creating choropleth map
+GDP_map <- ggplot(data = merged_data, aes(fill = `GDP%`)) +
+  geom_sf() +  # Plotting the spatial polygons
+  scale_fill_viridis_c(name = "Health Expenditure", na.value = "grey90",
+                       option = "viridis", direction = -1) +  # Color scale
+  labs(fill = "Health Expenditure (% of GDP)") +  # Legend title
+  theme_minimal()  # Minimal theme
+
+# Displaying the map
+GDP_map
+
+
+# Save choropleth map as PNG
+ggsave("C:/Users/Varaidzom/Documents/R training/final_project/Images/GDP_map.png", GDP_map, width = 10, height = 8, dpi = 300)
+
+```
+
+# Neonatal deaths vs GDP Expenditure  
+
+## Row 1 {height=70%}
+
+```{r title= "Neonatal deaths vs GDP Expenditure 2021"}
+# Renaming 'name_long' column to 'Country' in neonatal_deaths_2021
+colnames(neonatal_deaths_2021)[colnames(neonatal_deaths_2021) == "name_long"] <- "Country"
+
+# Creating ggplot object for bubble plot with aggregated data
+bubble_plot <- ggplot(neonatal_deaths_2021, aes(x = `GDP%`, y = Deaths,size= Deaths, fill = Country)) +
+  geom_point(alpha = 0.8, shape = 21) +  # Filled circles with transparency and white outline
+  scale_size(range = c(1, 20), labels = scales::comma) +  # Adjusting bubble size range and format labels as comma-separated integers
+  labs(
+    x = "Government Health Expenditure (% of GDP)",
+    y = "Neonatal Deaths",
+    size = "Neonatal Deaths"
+  ) +
+  theme_minimal(base_size = 10) +  # Minimal theme with base font size
+  theme(
+    plot.title = element_text(size = 10),  # Adjusting title font size
+    plot.background = element_rect(fill = "white"),  # White background
+    axis.line = element_line(color = "black")  # Color of axis lines
+  ) +
+  scale_y_continuous(labels = scales::comma) +  # Formatting y-axis labels as comma-separated integers
+  guides(size = FALSE, fill = FALSE)  # Removing size and fill legends
+
+# Save bubble as PNG
+ggsave("C:/Users/Varaidzom/Documents/R training/final_project/Images/Neonatal_GDP_plot.png", bubble_plot, width = 10, height = 8, dpi = 300)
+
+# Converting ggplot to plotly for interactivity
+interactive_plot <- ggplotly(bubble_plot, tooltip = c("Country", "GDP%", "Deaths"))
+
+# Displaying the interactive plot
+interactive_plot
+```
+
+## Row 2 {height=30%}
+According to WHO, government health expenditure as a percentage of GDP plays a crucial role in improving health outcomes, including reducing neonatal deaths. Effective allocation and utilization of health resources are key to strengthening health systems and achieving better maternal and child health outcomes globally.
+
+Adequate and well-targeted government health expenditure contributes to improving maternal and child health outcomes, including reducing neonatal deaths.
+Investments in maternal and child health services, such as prenatal care, skilled birth attendance, postnatal care, immunizations, and newborn care, are crucial for preventing neonatal deaths.
+
+
+
+
+# Download Data
+
+The data used in this dashboard is shown below and can be downloaded as a CSV.
+
+```{r}
+library(htmltools)
+
+htmltools::browsable(
+  tagList(
+    reactable(gvt_neonatal_joined,
+      elementId = "neonatal-table",
+      searchable = TRUE,
+      filterable = TRUE),
+    
+    tags$button("Download as CSV", onclick = "Reactable.downloadDataCSV('neonatal-table')")
+  )
+)
+```
+
